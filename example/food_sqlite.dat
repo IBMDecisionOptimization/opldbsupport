@@ -1,0 +1,20 @@
+prepare {
+  includeScript("opldbsupport.js");
+  OPLRegisterJDBC("MyDB",
+                  "opldbsupport.jar");    // adjust to actual location
+  OPLImportJAR("sqlite-jdbc-3.27.2.jar"); // adjust to actual location
+}
+
+MyDBConnection conn("jdbc:sqlite:food.db",
+                    // This SQL is executed before the first publish operation.
+                    // It recreates the Produce table.
+                    "DROP TABLE IF EXISTS Produce; CREATE TABLE Produce (Month int, Value real)");
+
+Products from MyDBRead(conn, "SELECT name FROM Products");
+Months   from MyDBRead(conn, "SELECT idx FROM Months");
+Cost     from MyDBRead(conn, "SELECT * from Cost");
+
+// You can use
+//   sqlite3 food.db "SELECT * FROM Produce"
+// to view the result in a console.
+ProduceSolution to MyDBPublish(conn, "INSERT INTO Produce VALUES (?, ?)");
