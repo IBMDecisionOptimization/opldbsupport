@@ -159,21 +159,32 @@ public class ExcelConnection implements DataConnection {
 
 	/** A parsed address specification. */
 	private static final class AddressInfo {
+		/** Sheet that is referenced by this address. */
 		public final Sheet sheet;
+		/** Range of cells referenced by this address. */
 		public final CellRangeAddress cells;
-		public AddressInfo(Sheet sheet, CellRangeAddress cells) {
+		/** If this is <code>true</code> then only the upper-left cell of {@link #cells} matters.
+		 * The width and height of the range is unbounded in this case.
+		 */
+		public final boolean unbounded;
+		public AddressInfo(Sheet sheet, CellRangeAddress cells, boolean unbounded) {
 			super();
 			this.sheet = sheet;
 			this.cells = cells;
+			this.unbounded = unbounded;
 		}
 	}
+	
+	/** Shortcut for <code>decode(addr, false)</code>. */
+	private AddressInfo decode(String addr) { return decode(addr, false); }
 
 	/** Decode an address specification.
 	 * It is assumed that <code>addr</code> specifies a contiguous and rectangular range on a single sheet.
 	 * @param addr The address to decode.
+	 * @param wildcard If <code>true</code> then the second argument to range can be "*"
 	 * @return The decoded address information.
 	 */
-	private AddressInfo decode(String addr) {
+	private AddressInfo decode(String addr, boolean wildcard) {
 		int defaultSheetIndex = wb.getActiveSheetIndex();
 		int sheetIndex = -1;
 		String range = null;
@@ -204,8 +215,18 @@ public class ExcelConnection implements DataConnection {
 			sheetIndex = defaultSheetIndex;
 			range = fields[0];
 		}
+		
+		if (wildcard) {
+			if (range.endsWith(":*")) {
+				String first = range.substring(0, range.length() - 2);
+				range = first + ":" + first;
+			}
+			else {
+				wildcard = false;
+			}
+		}
 
-		return new AddressInfo(wb.getSheetAt(sheetIndex), CellRangeAddress.valueOf(range));
+		return new AddressInfo(wb.getSheetAt(sheetIndex), CellRangeAddress.valueOf(range), wildcard);
 	}
 
 	/** Base class for iterators.
@@ -221,9 +242,12 @@ public class ExcelConnection implements DataConnection {
 		public IteratorBase(AddressInfo addr) {
 			this.sheet = addr.sheet;
 			this.firstRow = addr.cells.getFirstRow();
-			this.lastRow = addr.cells.getLastRow();
+			// Use MAX_VALUE - 1 for unbounded ranges so that we can get a number that is
+			// bigger by 1 without overflow.
+			final int maxVal = Integer.MAX_VALUE  -1;
+			this.lastRow = addr.unbounded ? maxVal : addr.cells.getLastRow();
 			this.firstCol = addr.cells.getFirstColumn();
-			this.lastCol = addr.cells.getLastColumn();
+			this.lastCol = addr.unbounded ? maxVal : addr.cells.getLastColumn();
 		}
 
 		/** Maps a zero-based relative column index to an absolute index.
@@ -239,6 +263,7 @@ public class ExcelConnection implements DataConnection {
 		}
 	}
 
+	/** Read a cell range row by row. */
 	private static final class InputIterator extends IteratorBase implements InputRowIterator {
 		private Row currentRow;
 		private int currentIndex;
@@ -362,6 +387,7 @@ public class ExcelConnection implements DataConnection {
 			return new InputIterator(decode(command));
 	}
 
+	/* Write output row by row. */
 	private static final class OutputIterator extends IteratorBase implements OutputRowIterator {
 		private WriteBack writeBack;
 		private Row currentRow;
@@ -429,7 +455,7 @@ public class ExcelConnection implements DataConnection {
 
 	@Override
 	public OutputRowIterator openOutputRows(String command) throws IOException {
-		return new OutputIterator(decode(command), writeBack);
+		return new OutputIterator(decode(command, true), writeBack);
 	}
 	@Override
 	public void close() throws IOException {

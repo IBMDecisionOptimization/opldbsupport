@@ -55,6 +55,8 @@ output to ExcelPublish(conn, "range");
 ```
 where `range` is an Excel range like "A1:C3".
 
+Note that for output a range can also be specified as "A1:*", i.e., with the wildcard character `*` as second argument of the range. In this case the code will use the first cell reference (A1 in this case) and fill the rectangular area anchored at this position with the data from the OPL element. This way you don't have to specify the exact size of output tables but can use the size that is implied by the OPL element.
+
 ### Limitations
 
 - The code was tested with Apache POI version 4.1.2. Things may not work if you use a different version.

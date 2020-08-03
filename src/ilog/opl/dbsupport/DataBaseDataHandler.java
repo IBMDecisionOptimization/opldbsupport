@@ -170,6 +170,7 @@ public class DataBaseDataHandler extends CustomOplDataHandler {
 						if (elem == null)
 							throw new IloException("no element " + info.elem);					
 						try {
+							System.out.println("Writing " + info.elem + " as " + info.spec);
 							/** FIXME: Where do we close the writeConnections? */
 							final DbConnection conn = getOrMakeConnection(info.name, factory, true, connectionSpecs, connectionMap);
 							OutputRowIterator output = conn.conn.openOutputRows(info.spec);
