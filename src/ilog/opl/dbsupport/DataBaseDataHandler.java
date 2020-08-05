@@ -87,8 +87,6 @@ public class DataBaseDataHandler extends CustomOplDataHandler {
 	}
 	/** Connections that were opened for reading. */
 	private final Map<String, DbConnection> readConnections = new TreeMap<String, DbConnection>();
-	/** Connections that were opened for writing. */
-	private final Map<String, DbConnection> writeConnections = new TreeMap<String, DbConnection>();
 	
 	/** Info about an element to be published. */
 	private static final class PublishInfo extends ConnectionInfo {
@@ -145,23 +143,22 @@ public class DataBaseDataHandler extends CustomOplDataHandler {
 		/** Shared with the enclosing {@link DataBaseDataHandler} class. */
 		private final LinkedList<PublishInfo> publishList;
 		/** Shared with the enclosing {@link DataBaseDataHandler} class. */
-		private final Map<String, DbConnection> connectionMap;
 		private final ConnectionFactory factory;
 		private final IloOplModel model;
 		
-		public Publisher(String prefix, ConnectionFactory factory, Map<String, ConnectionInfo> connectionSpecs, LinkedList<PublishInfo> publishList, Map<String, DbConnection> connectionMap, IloOplModel model) {
+		public Publisher(String prefix, ConnectionFactory factory, Map<String, ConnectionInfo> connectionSpecs, LinkedList<PublishInfo> publishList, IloOplModel model) {
 			super(IloOplFactory.getOplFactoryFrom(model));
 			this.prefix = prefix;
 			this.factory = factory;
 			this.connectionSpecs = connectionSpecs;
 			this.publishList = publishList;
-			this.connectionMap = connectionMap;
 			this.model = model;
 		}
 
 		/** This function is invoked by OPL when data should be published. */
 		@Override
 		public void customPublish() throws IloException {
+			final Map<String, DbConnection> connectionMap = new TreeMap<String, DbConnection>();
 			try {
 				try {
 					while (!publishList.isEmpty()) {
@@ -171,7 +168,6 @@ public class DataBaseDataHandler extends CustomOplDataHandler {
 							throw new IloException("no element " + info.elem);					
 						try {
 							System.out.println("Writing " + info.elem + " as " + info.spec);
-							/** FIXME: Where do we close the writeConnections? */
 							final DbConnection conn = getOrMakeConnection(info.name, factory, true, connectionSpecs, connectionMap);
 							OutputRowIterator output = conn.conn.openOutputRows(info.spec);
 							try {
@@ -194,6 +190,7 @@ public class DataBaseDataHandler extends CustomOplDataHandler {
 							reportAndMap(e);
 						}
 					}
+					clearConnectionMap(connectionMap);
 				}
 				finally {
 					// Even in case of error we remove all statements so that a potential
@@ -203,6 +200,18 @@ public class DataBaseDataHandler extends CustomOplDataHandler {
 			}
 			catch (Exception e) {
 				reportAndMap(e);
+			}
+			finally {
+				// Even in case of error attempt to close all connections but ignore exceptions.
+				// Note that if there is no error then connectionMap is already empty at this
+				// point and the function call is a noop.
+				try {
+					clearConnectionMap(connectionMap);
+				}
+				catch (IloException ignored) {
+					System.err.println(ignored.getMessage());
+					ignored.printStackTrace();
+				}
 			}
 		}
 
@@ -229,7 +238,8 @@ public class DataBaseDataHandler extends CustomOplDataHandler {
 		e.printStackTrace();
 		throw new IloException(e.getMessage());
 	}
-	
+
+	/** Factory method to be implemented by concrete connections. */
 	public interface ConnectionFactory {
 		public DataConnection newConnection(ConnectionInfo info, boolean write) throws IOException;
 	}
@@ -249,22 +259,21 @@ public class DataBaseDataHandler extends CustomOplDataHandler {
 		this.factory = factory;
 		this.opl = model;
 		this.prefix = prefix;
-		this.publisher = new Publisher(prefix, factory, specs, publish, writeConnections, model);
+		this.publisher = new Publisher(prefix, factory, specs, publish, model);
 		opl.registerCustomDataHandler(prefix, this);
 		opl.addResultPublisher(publisher);
 	}
-	@Override
-	public void closeConnections() throws IloException {
+	
+	private static void clearConnectionMap(Map<String, DbConnection> map) throws IloException {
 		try {
 			Exception ex = null;
-			for (DbConnection conn : readConnections.values()) {
+			for (DbConnection conn : map.values()) {
 				try { conn.conn.close(); }
 				catch (Exception e) {
 					if (ex == null)
 						ex = e;
 				}
 			}
-			readConnections.clear();
 			if (ex != null) {
 				reportAndMap(ex);
 			}
@@ -275,6 +284,15 @@ public class DataBaseDataHandler extends CustomOplDataHandler {
 		catch (RuntimeException e) {
 			reportAndMap(e);
 		}
+		finally {
+			// Clear the map even in case of error.
+			map.clear();
+		}
+	}
+	
+	@Override
+	public void closeConnections() throws IloException {
+		clearConnectionMap(readConnections);
 	}
 	@Override
 	public void handleConnection(String name, String connstr, String extra) throws IloException {
