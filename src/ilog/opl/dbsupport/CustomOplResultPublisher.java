@@ -23,8 +23,9 @@ import ilog.opl.IloOplResultPublisherWrapper;
  * Extend this class to implement a data handler that can be used with
  * {@link ilog.opl.IloOplModel#addResultPublisher(ilog.opl.IloOplResultPublisher)}.
  * See the C++ reference documentation for details about the abstract functions
- * that must
- * be implemented by subclasses.
+ * that must be implemented by subclasses.
+ * Note that this class should eventually become part of the official OPL API in which case it can
+ * be removed from this project.
  */
 public abstract class CustomOplResultPublisher extends IloOplResultPublisher {
 	// Internal class to wrap the actual implementation of a result publisher.
